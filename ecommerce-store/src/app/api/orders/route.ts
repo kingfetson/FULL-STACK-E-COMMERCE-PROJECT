@@ -1,53 +1,45 @@
 import { NextResponse } from "next/server"
-import { orders } from "../lib/orders"
-import { Order } from "../types/order"
-import { randomUUID } from "crypto"
+import { PrismaClient } from "@prisma/client"
 
+const prisma = new PrismaClient()
 
-function getOrderById(id: string, orders: any[]) {
-  return orders.find((order) => order.id === id)
-}
 export async function POST(req: Request) {
-  try {
-    const body = await req.json()
+  const data = await req.json()
+  const { customer, items, total } = data
 
-    if (
-      !body.customer?.name ||
-      !body.customer?.email ||
-      !body.customer?.address ||
-      !body.items?.length
-    ) {
-      return NextResponse.json(
-        { error: "Invalid order data" },
-        { status: 400 }
-      )
-    }
-
-    const total = body.items.reduce(
-      (sum: number, item: any) =>
-        sum + item.price * item.quantity,
-      0
-    )
-
-    const newOrder: Order = {
-      id: randomUUID(),
-      customer: body.customer,
-      items: body.items,
+  const order = await prisma.order.create({
+    data: {
       total,
-      createdAt: new Date().toISOString(),
-    }
+      customer: {
+        connectOrCreate: {
+          where: { email: customer.email },
+          create: customer,
+        },
+      },
+      items: {
+        create: items.map((item: any) => ({
+          productId: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+      },
+    },
+    include: {
+      customer: true,
+      items: true,
+    },
+  })
 
-    orders.push(newOrder)
-
-    return NextResponse.json(newOrder, { status: 201 })
-  } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to create order" },
-      { status: 500 }
-    )
-  }
+  return NextResponse.json(order)
 }
 
 export async function GET() {
+  const orders = await prisma.order.findMany({
+    include: {
+      customer: true,
+      items: true,
+    },
+  })
   return NextResponse.json(orders)
 }

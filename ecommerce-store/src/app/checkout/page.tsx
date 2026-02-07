@@ -1,5 +1,6 @@
 "use client"
 
+import { useSession } from "next-auth/react"
 import { useCartStore } from "../../store/cartStore"
 import { useHydrated } from "../../hooks/useHydrated"
 import { useRouter } from "next/navigation"
@@ -9,12 +10,52 @@ export default function CheckoutPage() {
   const hydrated = useHydrated()
   const router = useRouter()
   const { items, clearCart } = useCartStore()
+  const { data: session, status } = useSession()
 
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [address, setAddress] = useState("")
 
-  if (!hydrated) return null
+  if (!hydrated || status === "loading") return null
+
+  // Redirect if not logged in
+  if (!session) {
+    router.push("/auth/signin")
+    return null
+  }
+
+  const total = items.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  )
+
+  const handleSubmit = async () => {
+    const orderData = {
+      customer: {
+        name: name || session.user?.name || "Guest",
+        email: email || session.user?.email || "guest@example.com",
+        address,
+      },
+      items,
+      total,
+    }
+
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(orderData),
+    })
+
+    if (!res.ok) {
+      alert("Failed to place order")
+      return
+    }
+
+    const order = await res.json()
+
+    clearCart()
+    router.push(`/orders/${order.id}`)
+  }
 
   if (items.length === 0) {
     return (
@@ -30,37 +71,8 @@ export default function CheckoutPage() {
     )
   }
 
-  const total = items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  )
-
-  const handleSubmit = async () => {
-  await fetch("/api/orders", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      customer: { name, email, address },
-      items,
-    }),
-  })
-  //const handleSubmit = () => {
-    // later: send to backend
-    //console.log({
-      //customer: { name, email, address },
-     // items,
-     // total,
-    //})
-
-    clearCart()
-   router.push(`/orders/${order.id}`)
-  }
-
   return (
     <div className="max-w-5xl mx-auto p-6 grid md:grid-cols-2 gap-8">
-      
       {/* CUSTOMER DETAILS */}
       <div>
         <h1 className="text-2xl font-bold mb-4">Checkout</h1>
@@ -98,11 +110,8 @@ export default function CheckoutPage() {
       <div className="border p-4 rounded">
         <h2 className="text-xl font-bold mb-4">Order Summary</h2>
 
-        {items.map(item => (
-          <div
-            key={item.id}
-            className="flex justify-between border-b py-2"
-          >
+        {items.map((item) => (
+          <div key={item.id} className="flex justify-between border-b py-2">
             <span>
               {item.name} × {item.quantity}
             </span>
