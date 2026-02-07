@@ -24,6 +24,20 @@ export default function CheckoutPage() {
     return null
   }
 
+  if (items.length === 0) {
+    return (
+      <div className="p-6">
+        <p>Your cart is empty.</p>
+        <button
+          onClick={() => router.push("/")}
+          className="mt-4 underline"
+        >
+          Go back to shop
+        </button>
+      </div>
+    )
+  }
+
   const total = items.reduce(
     (sum, item) => sum + item.price * item.quantity,
     0
@@ -40,35 +54,37 @@ export default function CheckoutPage() {
       total,
     }
 
-    const res = await fetch("/api/orders", {
+    // 1️⃣ Create order in backend
+    const resOrder = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(orderData),
     })
 
-    if (!res.ok) {
-      alert("Failed to place order")
+    if (!resOrder.ok) {
+      alert("Failed to create order")
       return
     }
 
-    const order = await res.json()
+    const order = await resOrder.json()
 
+    // 2️⃣ Create Stripe session
+    const resStripe = await fetch("/api/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    })
+
+    if (!resStripe.ok) {
+      alert("Failed to create Stripe session")
+      return
+    }
+
+    const { url } = await resStripe.json()
+
+    // 3️⃣ Clear cart and redirect to Stripe
     clearCart()
-    router.push(`/orders/${order.id}`)
-  }
-
-  if (items.length === 0) {
-    return (
-      <div className="p-6">
-        <p>Your cart is empty.</p>
-        <button
-          onClick={() => router.push("/")}
-          className="mt-4 underline"
-        >
-          Go back to shop
-        </button>
-      </div>
-    )
+    window.location.href = url
   }
 
   return (
@@ -102,7 +118,7 @@ export default function CheckoutPage() {
           onClick={handleSubmit}
           className="bg-black text-white px-6 py-3 mt-4 rounded"
         >
-          Place Order
+          Place Order & Pay
         </button>
       </div>
 
